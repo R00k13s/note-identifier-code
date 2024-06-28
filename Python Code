@@ -1,0 +1,64 @@
+import serial
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.fft import fft, fftfreq
+
+# Set up serial communication
+ser = serial.Serial('COM6', 115200)  # Adjust 'COM6' to your port
+
+
+# Function to read samples from Arduino
+def read_samples(num_samples):
+    samples = []
+    while len(samples) < num_samples:
+        if ser.in_waiting > 0:
+            line = ser.readline().decode('utf-8').strip()
+            try:
+                sample = float(line)
+                samples.append(sample)
+            except ValueError:
+                pass
+    return np.array(samples)
+
+
+# Set up the plot
+plt.ion()
+fig, ax = plt.subplots()
+line, = ax.plot([], [], 'b-')
+ax.set_xlim(0, 2000)  # Adjust x-axis limit as needed
+ax.set_ylim(0, 100)  # Adjust y-axis limit as needed
+ax.set_xlabel('Frequency (Hz)')
+ax.set_ylabel('Magnitude')
+ax.set_title('Real-Time FFT of Audio Signal')
+
+# Real-time FFT processing and plotting
+num_samples = 128
+sampling_frequency = 4096
+
+while True:
+    samples = read_samples(num_samples)
+
+    # Perform FFT
+    yf = fft(samples)
+    xf = fftfreq(num_samples, 1 / sampling_frequency)
+
+    # Remove DC component (first element)
+    yf[0] = 0
+
+    # Calculate magnitude
+    magnitude = 2.0 / num_samples * np.abs(yf[:num_samples // 2])
+
+    # Update the plot
+    line.set_xdata(xf[:num_samples // 2])
+    line.set_ydata(magnitude)
+    ax.draw_artist(ax.patch)
+    ax.draw_artist(line)
+    fig.canvas.flush_events()
+
+    # Find the fundamental frequency
+    fundamental_frequency = xf[np.argmax(magnitude)]
+
+    # Send the fundamental frequency back to Arduino
+    ser.write(f'{fundamental_frequency:.2f}\n'.encode())
+
+ser.close()
